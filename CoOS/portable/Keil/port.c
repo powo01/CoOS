@@ -1,15 +1,38 @@
 /**
  *******************************************************************************
  * @file       prot.c
- * @version   V1.1.4    
- * @date      2011.04.20
+ * @version    V1.1.6    
+ * @date       2014.05.23
  * @brief      Compiler adapter for CooCox CoOS kernel.	
  *******************************************************************************
  * @copy
  *
- * INTERNAL FILE,DON'T PUBLIC.
+ *  Redistribution and use in source and binary forms, with or without 
+ *  modification, are permitted provided that the following conditions 
+ *  are met: 
+ *  
+ *      * Redistributions of source code must retain the above copyright 
+ *  notice, this list of conditions and the following disclaimer. 
+ *      * Redistributions in binary form must reproduce the above copyright
+ *  notice, this list of conditions and the following disclaimer in the
+ *  documentation and/or other materials provided with the distribution. 
+ *      * Neither the name of the <ORGANIZATION> nor the names of its 
+ *  contributors may be used to endorse or promote products derived 
+ *  from this software without specific prior written permission. 
+ *  
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ *  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
+ *  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+ *  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+ *  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+ *  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF 
+ *  THE POSSIBILITY OF SUCH DAMAGE.
  * 
- * <h2><center>&copy; COPYRIGHT 2010 CooCox </center></h2>
+ * <h2><center>&copy; COPYRIGHT 2014 CooCox </center></h2>
  *******************************************************************************
  */ 
 
@@ -117,7 +140,11 @@ __asm void IRQ_DISABLE_SAVE(void)
  */
 __asm  void SetEnvironment(OS_STK *pstk)
 {
+#if CFG_CHIP_TYPE == 3
+    SUBS    R0,#100
+#else
     SUBS    R0,#28
+#endif
     MSR     PSP, R0             ; Mov new stack point to PSP
     BX      LR	
     ALIGN
@@ -211,7 +238,7 @@ exitPendSV
 #endif
 
 
-#if CFG_CHIP_TYPE == 1
+#if CFG_CHIP_TYPE == 1 || 3 == CFG_CHIP_TYPE
 __asm  void PendSV_Handler()
 {
     IMPORT  TCBRunning
@@ -227,10 +254,16 @@ __asm  void PendSV_Handler()
     MRS     R0, PSP             ; Get PSP point (can not use PUSH,in ISR,SP is MSP )
     STMDB   R0!,{R4-R11}        ; Store r4-r11,r0 -= regCnt * 4,r0 is new stack 
                                 ; top point (addr h->l r11,r10,...,r5,r4)
+#if CFG_CHIP_TYPE == 3
+    VSTMDB R0!, {S16-S31}  // store remaining FPU registers
+#endif // CFG_FPU_ENABLE
     STR     R0,[R1]             ; Save orig PSP
 popStk  
     STR     R2, [R3]            ; TCBRunning  = TCBNext;
     LDR     R0, [R2]            ; Get SP of task that be switch into.
+#if CFG_CHIP_TYPE == 3
+    VLDMIA R0!, {S16-S31} // load remaining FPU registers
+#endif // CFG_FPU_ENABLE
     LDMIA   R0!,{R4-R11}        ; POP (R4-R11),R0 += regCnt * 4
     MSR     PSP, R0             ; Mov new stack point to PSP
 
@@ -239,6 +272,9 @@ exitPendSV
     MOVS    R0, #0x0
     STRB    R0, [R3]
     ORR     LR, LR, #0x04       ; Ensure exception return uses process stack
+#if CFG_CHIP_TYPE == 3
+    LDR    LR,=0xFFFFFFED
+#endif
     BX      LR                  ; Exit interrupt
     
     ALIGN
